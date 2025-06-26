@@ -127,6 +127,8 @@ class YouTubeCaptionGenerator:
     def _download_audio(self, youtube_url):
         """Download audio from YouTube video"""
         try:
+            st.info("🎵 Downloading audio...")
+            
             with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as temp_file:
                 temp_path = temp_file.name
             
@@ -148,16 +150,40 @@ class YouTubeCaptionGenerator:
                 
                 for file_path in possible_files:
                     if os.path.exists(file_path):
+                        st.success(f"✅ Audio downloaded: {os.path.basename(file_path)}")
                         return file_path
-        except:
-            pass
-        
-        return None
+                
+                st.error("❌ No audio file found despite success")
+                return None
+            else:
+                st.error(f"❌ Audio download failed (code {result.returncode})")
+                if result.stderr:
+                    st.error(f"Error: {result.stderr[:200]}...")
+                return None
+                
+        except subprocess.TimeoutExpired:
+            st.error("⏰ Audio download timed out")
+            return None
+        except Exception as e:
+            st.error(f"💥 Audio download failed: {str(e)}")
+            return None
     
     def _transcribe_audio(self, audio_path):
         """Transcribe audio using OpenAI Whisper"""
         try:
             st.info("🎤 Transcribing audio with Whisper...")
+            
+            # Check file exists and size
+            if not os.path.exists(audio_path):
+                st.error("❌ Audio file doesn't exist")
+                return None
+                
+            file_size = os.path.getsize(audio_path)
+            st.info(f"📁 Audio file size: {file_size} bytes")
+            
+            if file_size == 0:
+                st.error("❌ Audio file is empty")
+                return None
             
             with open(audio_path, 'rb') as audio_file:
                 transcript = self.client.audio.transcriptions.create(
@@ -166,9 +192,11 @@ class YouTubeCaptionGenerator:
                     response_format="text"
                 )
             
+            st.success(f"✅ Transcription complete: {len(transcript)} chars")
             return transcript
+            
         except Exception as e:
-            st.error(f"Transcription failed: {str(e)}")
+            st.error(f"💥 Whisper transcription failed: {str(e)}")
             return None
     
     def _generate_caption(self, transcript):
@@ -221,6 +249,40 @@ Generate ONLY the caption, no explanation:
 def get_generator():
     return YouTubeCaptionGenerator()
 
+def check_system_dependencies():
+    """Check if required system dependencies are available"""
+    st.subheader("🔍 System Check")
+    
+    # Check yt-dlp
+    try:
+        result = subprocess.run(['yt-dlp', '--version'], capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            st.success(f"✅ yt-dlp version: {result.stdout.strip()}")
+        else:
+            st.error(f"❌ yt-dlp failed: {result.stderr}")
+    except FileNotFoundError:
+        st.error("❌ yt-dlp not found")
+    except Exception as e:
+        st.error(f"❌ yt-dlp check failed: {str(e)}")
+    
+    # Check ffmpeg
+    try:
+        result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            st.success("✅ ffmpeg available")
+        else:
+            st.error("❌ ffmpeg not available")
+    except FileNotFoundError:
+        st.error("❌ ffmpeg not found")
+    except Exception as e:
+        st.error(f"❌ ffmpeg check failed: {str(e)}")
+    
+    # Check OpenAI API
+    if os.getenv('OPENAI_API_KEY'):
+        st.success("✅ OpenAI API key configured")
+    else:
+        st.error("❌ OpenAI API key missing")
+
 # Main app
 def main():
     # Header
@@ -241,6 +303,10 @@ def main():
     
     # Input section
     st.subheader("📝 Enter YouTube Shorts URLs")
+    
+    # Add system check button
+    if st.button("🔍 Check System Dependencies", help="Debug what's available on this server"):
+        check_system_dependencies()
     
     # Text area for URLs
     urls_text = st.text_area(
