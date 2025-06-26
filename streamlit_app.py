@@ -132,33 +132,45 @@ class YouTubeCaptionGenerator:
             with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as temp_file:
                 temp_path = temp_file.name
             
+            # Try simpler approach first - just get best audio
             cmd = [
-                'yt-dlp', '-x', '--audio-format', 'mp3',
-                '--audio-quality', '0',
+                'yt-dlp', 
+                '-f', 'bestaudio',
+                '--extract-audio',
+                '--audio-format', 'mp3',
                 '-o', temp_path.replace('.mp3', '.%(ext)s'),
                 youtube_url
             ]
             
+            st.info(f"🚀 Command: {' '.join(cmd)}")
+            
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            
+            st.info(f"📊 Return code: {result.returncode}")
+            if result.stdout:
+                st.info(f"📄 Output: {result.stdout[:300]}...")
+            if result.stderr:
+                st.warning(f"⚠️ Errors: {result.stderr[:300]}...")
             
             if result.returncode == 0:
                 possible_files = [
                     temp_path,
+                    temp_path.replace('.mp3', '.mp3'),
                     temp_path.replace('.mp3', '.m4a'),
-                    temp_path.replace('.mp3', '.webm')
+                    temp_path.replace('.mp3', '.webm'),
+                    temp_path.replace('.mp3', '.wav')
                 ]
                 
                 for file_path in possible_files:
                     if os.path.exists(file_path):
-                        st.success(f"✅ Audio downloaded: {os.path.basename(file_path)}")
+                        file_size = os.path.getsize(file_path)
+                        st.success(f"✅ Audio downloaded: {os.path.basename(file_path)} ({file_size} bytes)")
                         return file_path
                 
                 st.error("❌ No audio file found despite success")
                 return None
             else:
                 st.error(f"❌ Audio download failed (code {result.returncode})")
-                if result.stderr:
-                    st.error(f"Error: {result.stderr[:200]}...")
                 return None
                 
         except subprocess.TimeoutExpired:
